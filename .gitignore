@@ -1,4 +1,19 @@
-_privat/
+# Datos, resultados y ficheros privados: nunca se versionan
+datos/
+privado/
+*.parquet
+*.npz
+*.npy
+*.pkl
+*.pt
+nombres_senales.json
+
+# Entorno
+__pycache__/
+.ipynb_checkpoints/
+venv/
+.venv/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
