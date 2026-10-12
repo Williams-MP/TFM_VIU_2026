@@ -57,6 +57,17 @@ IDX_CONTADORES = list(range(0, 11))
 IDX_GAP = 11    # V01
 IDX_SALTO = 12  # V02
 
+# Familia de cada variable, con nombres genéricos (apartado 5.1.3 de la
+# memoria). Un error y sus recuperaciones están en la misma familia.
+FAMILIA_DE_VARIABLE = {
+    "S01ERR": "FAM_1", "S01REC01": "FAM_1", "S01REC02": "FAM_1",
+    "S02ERR": "FAM_1", "S02REC01": "FAM_1", "S02REC02": "FAM_1",
+    "S03": "FAM_2", "S03H01": "FAM_2", "S03L01": "FAM_2",
+    "S04": "FAM_3", "S04L01": "FAM_3",
+    "V01": "FAM_4", "V02": "FAM_4",
+}
+ORDEN_FAMILIAS = ["FAM_1", "FAM_2", "FAM_3", "FAM_4"]
+
 # Dimensiones de la entrada del modelo: 12 reportes por ventana, 13 variables.
 N_FEATS = 13
 N_WINDOW = 12
