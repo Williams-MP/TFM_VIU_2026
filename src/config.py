@@ -32,6 +32,10 @@ RUTA_RESULTADOS = f"{RUTA_DRIVE}/resultados"
 # de cada modelo y registro de entrenamientos.
 RUTA_DETECTORES = f"{RUTA_RESULTADOS}/detectores"
 
+# Resultados de 03_analisis_detectores: concordancia de alertas, alertas de
+# consenso, umbral POT y alertas comunes (entrada de los Experimentos 2 y 3).
+RUTA_ANALISIS_DETECTORES = f"{RUTA_RESULTADOS}/analisis_detectores"
+
 # ============================================================
 # Variables de cada ventana
 # ============================================================
