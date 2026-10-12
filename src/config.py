@@ -43,6 +43,15 @@ RUTA_DETECTORES_REPRODUCIBILIDAD = f"{RUTA_DETECTORES}_reproducibilidad"
 # Figuras, tablas y registro de resultados de 04_experimento_1.
 RUTA_EXPERIMENTO_1 = f"{RUTA_RESULTADOS}/experimento_1"
 
+# Carpeta privada (fuera del repositorio): prompts, nombres que ve el modelo y todo lo que
+# contiene textos del modelo o la referencia del autor.
+RUTA_PRIVADO = f"{RUTA_DRIVE}/privado"
+
+# Experimento 2 (05 y 06): entradas, ejecuciones y respuestas del modelo, en la carpeta privada.
+# Solo las cifras (sin textos) se guardan en resultados/experimento_2.
+RUTA_EXPERIMENTO_2_PRIVADO = f"{RUTA_PRIVADO}/experimento_2"
+RUTA_EXPERIMENTO_2 = f"{RUTA_RESULTADOS}/experimento_2"
+
 # ============================================================
 # Variables de cada ventana
 # ============================================================
