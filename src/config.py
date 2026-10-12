@@ -36,6 +36,13 @@ RUTA_DETECTORES = f"{RUTA_RESULTADOS}/detectores"
 # consenso, umbral POT y alertas comunes (entrada de los Experimentos 2 y 3).
 RUTA_ANALISIS_DETECTORES = f"{RUTA_RESULTADOS}/analisis_detectores"
 
+# Repetición de los 10 entrenamientos (sección 7 de 02_entrenamiento_detectores),
+# que 04_experimento_1 compara con el entrenamiento original.
+RUTA_DETECTORES_REPRODUCIBILIDAD = f"{RUTA_DETECTORES}_reproducibilidad"
+
+# Figuras, tablas y registro de resultados de 04_experimento_1.
+RUTA_EXPERIMENTO_1 = f"{RUTA_RESULTADOS}/experimento_1"
+
 # ============================================================
 # Variables de cada ventana
 # ============================================================
