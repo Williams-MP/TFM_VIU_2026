@@ -96,7 +96,7 @@ def graficar_ventana(ventana, nombres, titulo):
     return figura
 
 
-def graficar_ventana_y_tabla(ventana, nombres, titulo):
+def graficar_ventana_y_tabla(ventana, nombres, titulo, mostrar=True):
     """
     Gráfica de la ventana (izquierda) y tabla con sus valores (derecha), en una
     sola figura, para analizar la respuesta del LLM viendo exactamente los datos
@@ -111,9 +111,10 @@ def graficar_ventana_y_tabla(ventana, nombres, titulo):
             valores que recibe el LLM.
         nombres (list[str]): nombre de cada señal, en el orden de las columnas.
         titulo (str): título de la figura.
+        mostrar (bool): si es False, solo devuelve la figura (p. ej. para guardarla en un HTML).
 
     Devuelve:
-        plotly.graph_objects.Figure: la figura (ya mostrada).
+        plotly.graph_objects.Figure: la figura.
     """
     n_eventos = ventana.shape[0]
     eventos = [f"ev{i+1}" for i in range(n_eventos)]
@@ -153,5 +154,6 @@ def graficar_ventana_y_tabla(ventana, nombres, titulo):
                     yanchor="top", y=-0.15, x=0, xanchor="left", font=dict(size=10)),
         updatemenus=_botones(y_reales, y_log, list(range(n_senales)), x_botones_visibilidad=0.22),
     )
-    figura.show()
+    if mostrar:
+        figura.show()
     return figura
