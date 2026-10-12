@@ -24,6 +24,14 @@ RUTA_DRIVE = os.environ.get("TFM_RUTA_DATOS", "/content/drive/MyDrive/TFM_VIU_20
 # escaladores, y de la que leen el resto de notebooks.
 RUTA_PREPARADOS = f"{RUTA_DRIVE}/preparados"
 
+# Carpeta raíz de los resultados. Cada notebook escribe en su propia
+# subcarpeta y solo lee las de los notebooks anteriores.
+RUTA_RESULTADOS = f"{RUTA_DRIVE}/resultados"
+
+# Resultados de 02_entrenamiento_detectores: checkpoints, errores por señal
+# de cada modelo y registro de entrenamientos.
+RUTA_DETECTORES = f"{RUTA_RESULTADOS}/detectores"
+
 # ============================================================
 # Variables de cada ventana
 # ============================================================

@@ -42,6 +42,50 @@ def calcular_anomaly_scores(modelo, X, dispositivo, alfa=0.0, beta=1.0, tamano_b
     return np.concatenate(scores)
 
 
+def calcular_errores_por_senal(modelo, X, dispositivo, tamano_batch=256):
+    """
+    Calcula, para cada ventana, el error cuadrático de reconstrucción de cada
+    variable en cada decodificador, promediado sobre los 12 reportes.
+
+    Guardar los dos errores por separado permite calcular después la
+    puntuación de cualquier arquitectura (con sus pesos alfa y beta) sin
+    volver a usar la GPU: ver score_desde_errores().
+
+    Parámetros:
+        modelo: TranADNet entrenado, en modo evaluación.
+        X (np.ndarray): ventanas escaladas, forma (n, 12, 13).
+        dispositivo: 'cuda' o 'cpu'.
+        tamano_batch (int): ventanas por lote (no afecta al resultado).
+
+    Devuelve:
+        (e1, e2): dos arrays float32 de forma (n, 13), del primer y del
+        segundo decodificador. El orden de las ventanas es el de X.
+    """
+    dataloader = DataLoader(TensorDataset(torch.tensor(X, dtype=torch.float32)),
+                            batch_size=tamano_batch, shuffle=False)  # sin barajar: se conserva el orden
+    lista_e1, lista_e2 = [], []
+    with torch.no_grad():
+        for (batch_x,) in dataloader:
+            ventana = batch_x.permute(1, 0, 2).to(dispositivo)  # (12, lote, 13)
+            x1, x2 = modelo(ventana, ventana)
+            # Media sobre los 12 reportes: una fila por ventana, una columna por variable.
+            lista_e1.append(((x1 - ventana) ** 2).mean(dim=0).cpu().numpy())
+            lista_e2.append(((x2 - ventana) ** 2).mean(dim=0).cpu().numpy())
+    return np.concatenate(lista_e1).astype(np.float32), np.concatenate(lista_e2).astype(np.float32)
+
+
+def score_desde_errores(e1, e2, alfa, beta):
+    """
+    Puntuación de anomalía (ecuación 1) a partir de los errores por variable
+    de calcular_errores_por_senal(). Da el mismo resultado que
+    calcular_anomaly_scores() con los mismos alfa y beta.
+
+    Devuelve:
+        np.ndarray: una puntuación por ventana, forma (n,).
+    """
+    return (alfa * e1 + beta * e2).mean(axis=1)
+
+
 def umbral_pot(scores_referencia, q=1e-3, nivel_inicial=0.98):
     """
     Umbral de alerta por Peaks-Over-Threshold (Siffer et al., 2017),
