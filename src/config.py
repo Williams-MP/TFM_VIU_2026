@@ -52,6 +52,11 @@ RUTA_PRIVADO = f"{RUTA_DRIVE}/privado"
 RUTA_EXPERIMENTO_2_PRIVADO = f"{RUTA_PRIVADO}/experimento_2"
 RUTA_EXPERIMENTO_2 = f"{RUTA_RESULTADOS}/experimento_2"
 
+# Experimento 3 (08 y 09): ejecuciones, pruebas, informes y respuestas del modelo, en la carpeta privada.
+# Solo las cifras (sin textos) se guardan en resultados/experimento_3.
+RUTA_EXPERIMENTO_3_PRIVADO = f"{RUTA_PRIVADO}/experimento_3"
+RUTA_EXPERIMENTO_3 = f"{RUTA_RESULTADOS}/experimento_3"
+
 # ============================================================
 # Variables de cada ventana
 # ============================================================
