@@ -9,6 +9,7 @@ prompt. La descripción sustituye a {datos} en las instrucciones que lo usan.
 from dataclasses import dataclass
 from typing import Callable
 
+from config import NOMBRES_CONTADORES
 from datos import formatear_ventana_como_texto
 
 
@@ -33,11 +34,48 @@ def tabla_reportes(v, nombres):
     return "\n".join(lineas)
 
 
+# Posición de cada contador en la ventana (12, 11), por su nombre corto
+POSICION = {nombre: i for i, nombre in enumerate(NOMBRES_CONTADORES)}
+_P = POSICION
+
+# Experimento 3: valores calculados aquí (no por el modelo) en cada reporte, y la tolerancia con la que se
+# comprueba lo que escribe el modelo (redondea a entero). Cada función recibe la fila del reporte y devuelve
+# el valor, o None si no se puede calcular (sin pérdidas RTP no hay porcentaje).
+CALCULOS = {
+    "sin_recuperar": (lambda f: f[_P["S01ERR"]] - f[_P["S01REC01"]] - f[_P["S01REC02"]], 0),
+    "pct_rafaga": (lambda f: 100 * f[_P["S02ERR"]] / f[_P["S01ERR"]] if f[_P["S01ERR"]] else None, 1),
+    "pct_recuperado": (lambda f: 100 * (f[_P["S01REC01"]] + f[_P["S01REC02"]]) / f[_P["S01ERR"]]
+                       if f[_P["S01ERR"]] else None, 1),
+}
+FILAS_CALCULADAS = ["sin_recuperar", "pct_rafaga", "pct_recuperado"]
+
+
+def tabla_senales_calculos(v, nombres):
+    """
+    La tabla de señales en filas con tres filas más, calculadas aquí: lo que queda sin recuperar, el porcentaje
+    de la pérdida en ráfaga y el porcentaje recuperado. Valores redondeados a entero; «-» en los porcentajes de
+    los reportes sin pérdidas RTP.
+    """
+    ancho = max(len(n) for n in nombres) + 2
+    lineas = [tabla_senales(v, nombres)]
+    for nombre in FILAS_CALCULADAS:
+        funcion = CALCULOS[nombre][0]
+        celdas = []
+        for fila in v.astype(float):
+            valor = funcion(fila)
+            celdas.append("-".rjust(12) if valor is None else f"{int(round(valor)):12d}")
+        lineas.append(nombre.ljust(ancho) + "".join(celdas))
+    return "\n".join(lineas)
+
+
 REPRESENTACIONES = {
     "tabla_senales": Representacion(tabla_senales, "v1",
                                     "una tabla (filas: señales; columnas ev1 a ev12: reportes en orden cronológico)"),
     "tabla_reportes": Representacion(tabla_reportes, "v1",
                                      "una tabla (filas ev1 a ev12: reportes en orden cronológico; columnas: señales)"),
+    "tabla_senales_calculos": Representacion(tabla_senales_calculos, "v1",
+                                             "una tabla (filas: señales y tres valores calculados; columnas ev1 a "
+                                             "ev12: reportes en orden cronológico)"),
 }
 
 

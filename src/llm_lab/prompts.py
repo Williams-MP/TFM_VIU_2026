@@ -10,6 +10,7 @@ Estructura (fuera del repositorio, por el acuerdo de confidencialidad):
                                              procedimiento, esquema)
             variantes/<nombre>.v<N>.json     qué bloques (y versión) lleva cada variante, qué
                                              representación de la ventana, cuántos tokens de salida
+                                             y, si hace falta, el orden de las piezas del mensaje
 
 Los textos se escriben con los nombres cortos de las señales (S01ERR, S03...). Al montar el prompt,
 `poner_nombres()` los cambia por los nombres de nombres_senales.json, que es el único sitio donde
@@ -32,6 +33,8 @@ from .huellas import huella_texto
 
 TIPOS_BLOQUE = ["rol", "instruccion", "contexto", "procedimiento", "esquema"]
 OPCIONALES = {"contexto", "procedimiento"}
+# Orden de las piezas del mensaje de usuario si la variante no define «orden» (el del Experimento 2)
+ORDEN_POR_DEFECTO = ["instruccion", "contexto", "datos", "procedimiento", "esquema"]
 RUTA_PRIVADA = f"{RUTA_DRIVE}/privado"
 
 
@@ -167,25 +170,43 @@ class Prompts:
             datos = " y ".join(rep.REPRESENTACIONES[r].descripcion for r in d["representaciones"])
             textos["instruccion"] = textos["instruccion"].replace("{datos}", datos)
         return {**textos, "id": f"{d['nombre']}@v{d['version']}", "representaciones": d["representaciones"],
-                "max_new_tokens": d["max_new_tokens"], "tipo_respuesta": d["tipo_respuesta"]}
+                "max_new_tokens": d["max_new_tokens"], "tipo_respuesta": d["tipo_respuesta"],
+                "orden": d.get("orden", ORDEN_POR_DEFECTO)}
+
+    def _partes_usuario(self, r, datos):
+        # Piezas del mensaje de usuario en el orden de la variante; las opcionales vacías se omiten.
+        # datos(nombre de la representación) -> texto que va en el lugar de los datos.
+        partes = []
+        for pieza in r["orden"]:
+            if pieza == "datos":
+                partes += [datos(n) for n in r["representaciones"]]
+            elif r[pieza]:
+                partes.append(r[pieza])
+        return partes
 
     def montar_mensajes(self, ref, ventana):
         """
         Mensajes de chat de una variante para una ventana (12, 11) en enteros.
-        Orden del mensaje de usuario: instrucción -> contexto -> datos -> procedimiento -> esquema.
+        Orden del mensaje de usuario: el de la variante («orden»); si no lo define,
+        instrucción -> contexto -> datos -> procedimiento -> esquema (Experimento 2).
         """
         r = self.resolver(ref)
-        partes = [r["instruccion"]]
-        if r["contexto"]:
-            partes.append(r["contexto"])
-        partes += [rep.mostrar(n, ventana, self.nombres_llm) for n in r["representaciones"]]
-        if r["procedimiento"]:
-            partes.append(r["procedimiento"])
-        partes.append(r["esquema"])
+        partes = self._partes_usuario(r, lambda n: rep.mostrar(n, ventana, self.nombres_llm))
         return [{"role": "system", "content": r["rol"]}, {"role": "user", "content": "\n\n".join(partes)}]
+
+    def texto_prompt(self, ref):
+        """
+        Texto completo del prompt sin los datos: «### SISTEMA», el rol, «### USUARIO» y las piezas del mensaje
+        de usuario, con un marcador {NOMBRE_DE_LA_REPRESENTACION} en lugar de cada tabla. Es el formato en que
+        el Experimento 3 guarda el prompt, y su huella (huella_texto) identifica las ejecuciones.
+        """
+        r = self.resolver(ref)
+        partes = self._partes_usuario(r, lambda n: "{" + n.upper() + "}")
+        return f"### SISTEMA\n{r['rol']}\n### USUARIO\n" + "\n\n".join(partes)
 
     def huella_variante(self, ref):
         """Huella de todo lo que define la variante: textos, representaciones (con versión) y tokens."""
         r = self.resolver(ref)
         reprs = "+".join(f"{n}:{rep.REPRESENTACIONES[n].version}" for n in r["representaciones"])
-        return huella_texto(*(r[t] or "" for t in TIPOS_BLOQUE), reprs, str(r["max_new_tokens"]))
+        extra = [] if r["orden"] == ORDEN_POR_DEFECTO else ["+".join(r["orden"])]   # Exp. 2: misma huella que antes
+        return huella_texto(*(r[t] or "" for t in TIPOS_BLOQUE), reprs, str(r["max_new_tokens"]), *extra)
