@@ -9,9 +9,12 @@ cuentas, que es donde fallaba en las pruebas de desarrollo.
 
 Comprobaciones automáticas de cada respuesta:
 - Fidelidad (H3): el formato pide citar los valores como «evN: señal=valor». comprobar_citas() comprueba cada
-  cita en el reporte exacto de la ventana (no basta con que el valor aparezca en otro reporte).
+  cita en el reporte exacto de la ventana (no basta con que el valor aparezca en otro reporte). También se
+  comprueban las citas escritas como «evN (señal=valor)» o «señal=valor en evN», que el modelo usa a veces.
 - Aritmética: los valores calculados que el modelo copia («evN: sin_recuperar=…») se comparan con los reales.
   Es una medida aparte: no cuenta como error de fidelidad de H3.
+- Impacto: el nivel que da el modelo para vídeo y audio se compara con el de la escala declarada (peor reporte de
+  S03 y S04: 0 ninguno, 1-10 bajo, 11-360 medio, > 360 alto). También es una medida aparte de H3.
 
 Confidencialidad: las respuestas del modelo y los errores de cita llevan los nombres que ve el modelo, así que
 las ejecuciones, las pruebas y el informe HTML se guardan solo en la carpeta privada. Lo que se puede compartir
@@ -31,7 +34,7 @@ import pandas as pd
 
 from .huellas import huella_texto
 from .modelos import entorno
-from .representaciones import CALCULOS
+from .representaciones import CALCULOS, POSICION
 from .respuestas import leer_explicacion
 
 COLUMNAS_TEXTO = ["errores_cita", "senales_a_cero", "errores_calculo"]   # llevan nombres reales: solo privado
@@ -60,25 +63,47 @@ def _a_numero(texto):
         return None
 
 
+# Además del formato pedido («evN: señal=valor»), el modelo escribe a veces «evN (señal=valor, …)» o
+# «señal=valor en evN». Las dos formas atribuyen el valor a un único reporte sin ambigüedad, así que también se
+# comprueban. No se atribuyen: un valor para varios reportes («=0 en ev7, ev8») ni un número sin señal («ev4 (35)»).
+_PATRON_REPORTE_PARENTESIS = re.compile(r"\bev\s?(\d{1,2})\s*\(", re.I)
+_PATRON_PAR_EN_REPORTE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(-?\d(?:[\d.,]*\d)?)\s+en\s+(?:el\s+)?"
+                                    r"ev\s?(\d{1,2})\b(?!\s*(?:,|\by\b|\be\b)\s*ev\s?\d)", re.I)
+
+
+def _pares_con_posicion(texto):
+    # (reporte, nombre, valor en texto, posición del par) de las tres formas, sin repetir ningún par
+    pares = []
+    for patron in (_PATRON_REPORTE, _PATRON_REPORTE_PARENTESIS):
+        for m in patron.finditer(texto or ""):
+            if patron is _PATRON_REPORTE_PARENTESIS:
+                cierre = texto.find(")", m.end())
+                if "respectivamente" in texto[m.end():cierre if cierre >= 0 else len(texto)].lower():
+                    continue   # «en ev11 y ev12 (a=957 y 618 respectivamente)»: los valores son de varios reportes
+            pos = m.end()
+            while True:
+                par = _PAR_PEGADO.match(texto, pos)
+                if not par:
+                    break
+                pares.append((int(m.group(1)), par.group(1), par.group(2), par.start(1)))
+                sep = _SEPARADOR.match(texto, par.end())
+                if not sep:
+                    break
+                pos = sep.end()
+    ya = {p[3] for p in pares}
+    for m in _PATRON_PAR_EN_REPORTE.finditer(texto or ""):
+        if m.start(1) not in ya:
+            pares.append((int(m.group(3)), m.group(1), m.group(2), m.start(1)))
+    return sorted(pares, key=lambda p: p[3])
+
+
 def _pares_tras_marcas(texto):
     """
-    Pares (reporte, nombre, valor en texto) escritos justo detrás de cada «evN:»: «ev3: a=5, b=7» da dos pares.
-    Un «nombre=valor» que no va pegado a su «evN:» (p. ej. «con pct_rafaga=99 (ej: ev1: …)») no se atribuye a
-    ningún reporte: así no se confunde con el reporte citado antes en otra frase.
+    Pares (reporte, nombre, valor en texto) atribuidos a un único reporte: «evN: a=5, b=7» (el formato pedido),
+    «evN (a=5, b=7)» y «a=5 en evN». Un «nombre=valor» que no va pegado a su reporte (p. ej. «con pct_rafaga=99
+    (ej: ev1: …)») no se atribuye a ninguno: así no se confunde con el reporte citado antes en otra frase.
     """
-    pares = []
-    for m in _PATRON_REPORTE.finditer(texto or ""):
-        pos = m.end()
-        while True:
-            par = _PAR_PEGADO.match(texto, pos)
-            if not par:
-                break
-            pares.append((int(m.group(1)), par.group(1), par.group(2)))
-            sep = _SEPARADOR.match(texto, par.end())
-            if not sep:
-                break
-            pos = sep.end()
-    return pares
+    return [p[:3] for p in _pares_con_posicion(texto)]
 
 
 def citas(texto):
@@ -172,6 +197,31 @@ def partes_impacto(datos):
     return video, audio, mayor
 
 
+# Escala de impacto declarada en el prompt (supuesto del trabajo), por canal y con su peor reporte:
+# 0 = ninguno; 1-10 = bajo (p90 de los valores distintos de 0 en entrenamiento); 11-360 = medio; > 360 = alto.
+ESCALA_IMPACTO = ((0, "ninguno"), (10, "bajo"), (360, "medio"))
+
+
+def nivel_impacto(valor):
+    """Nivel de la escala de impacto para el peor valor de un canal."""
+    for limite, nivel in ESCALA_IMPACTO:
+        if valor <= limite:
+            return nivel
+    return "alto"
+
+
+def comprobar_impacto(datos, ventana):
+    """
+    Nivel de impacto que corresponde a la ventana según la escala (vídeo: S03; audio: S04, su peor reporte) y si
+    coincide con el que da el modelo. Es una medida aparte: no cuenta como error de fidelidad de H3.
+    """
+    video, audio, _ = partes_impacto(datos)
+    esperado_video = nivel_impacto(int(ventana[:, POSICION["S03"]].max()))
+    esperado_audio = nivel_impacto(int(ventana[:, POSICION["S04"]].max()))
+    return {"impacto_video_esperado": esperado_video, "impacto_video_coherente": video == esperado_video,
+            "impacto_audio_esperado": esperado_audio, "impacto_audio_coherente": audio == esperado_audio}
+
+
 def analizar(respuesta_bruta, ventana, nombres):
     """Respuesta interpretada: JSON (con estado), citas, cálculos, tipo de evolución e impacto."""
     datos, estado = leer_explicacion(respuesta_bruta)
@@ -179,7 +229,7 @@ def analizar(respuesta_bruta, ventana, nombres):
     calculos = comprobar_calculos(datos if datos else respuesta_bruta, ventana)
     video, audio, mayor = partes_impacto(datos)
     return {"estado_json": estado, "datos": datos, **fidelidad, **calculos, "evolucion_tipo": tipo_evolucion(datos),
-            "impacto_video": video, "impacto_audio": audio, "impacto_nivel": mayor}
+            "impacto_video": video, "impacto_audio": audio, "impacto_nivel": mayor, **comprobar_impacto(datos, ventana)}
 
 
 def fila_resultado(w, a, cortada=None, tokens_salida=None):
@@ -191,9 +241,57 @@ def fila_resultado(w, a, cortada=None, tokens_salida=None):
             **{f"{n}_{s}": a[f"{n}_{s}"] for n in CALCULOS for s in ("correctos", "total")},
             "evolucion_tipo": a["evolucion_tipo"], "impacto_video": a["impacto_video"],
             "impacto_audio": a["impacto_audio"], "impacto_nivel": a["impacto_nivel"],
+            **{k: a[k] for k in ("impacto_video_esperado", "impacto_video_coherente",
+                                 "impacto_audio_esperado", "impacto_audio_coherente")},
             "origen": str(a["datos"].get("origen", "")) if a["datos"] else None,
             "errores_cita": " | ".join(a["errores_cita"]), "senales_a_cero": ", ".join(a["senales_a_cero"]),
             "errores_calculo": " | ".join(a["errores_calculo"])}
+
+
+# ---------------------------------------------------------------- tipos de error de cita
+TIPOS_ERROR = ["reporte vecino", "otra señal, mismo reporte", "otra señal, reporte vecino",
+               "valor de otra celda", "no está en la ventana", "señal o reporte inexistente"]
+
+
+def clasificar_errores(respuesta_bruta, ventana, nombres):
+    """
+    Cada cita equivocada con su probable origen, comparando el valor citado con el resto de la ventana:
+    - «reporte vecino»: es el valor de esa misma señal en el reporte anterior o el siguiente (se equivoca de columna);
+    - «otra señal, mismo reporte»: es el valor de otra señal en ese reporte (se equivoca de fila);
+    - «otra señal, reporte vecino»: otra señal en el reporte anterior o el siguiente;
+    - «valor de otra celda»: está en la ventana, pero lejos;  «no está en la ventana»: no aparece en ninguna celda.
+    Es una aproximación: con valores pequeños (0, 1, 2…) varias celdas pueden coincidir por azar; se toma la
+    primera explicación de la lista. Devuelve una lista de dicts (reporte, señal, citado, real, tipo).
+    """
+    datos, _ = leer_explicacion(respuesta_bruta)
+    texto = json.dumps(datos, ensure_ascii=False) if datos else str(respuesta_bruta or "")
+    posicion = {n: j for j, n in enumerate(nombres)}
+    filas = []
+    for reporte, senal, valor in citas(texto):
+        if senal in CALCULOS:
+            continue
+        if senal not in posicion or not 1 <= reporte <= ventana.shape[0] or valor is None:
+            filas.append({"reporte": reporte, "senal": senal, "citado": valor, "real": None,
+                          "tipo": "señal o reporte inexistente"})
+            continue
+        i, j = reporte - 1, posicion[senal]
+        real = int(ventana[i, j])
+        if real == valor:
+            continue
+        vecinos = [k for k in (i - 1, i + 1) if 0 <= k < ventana.shape[0]]
+        otras = [c for c in range(ventana.shape[1]) if c != j]
+        if any(int(ventana[k, j]) == valor for k in vecinos):
+            tipo = "reporte vecino"
+        elif any(int(ventana[i, c]) == valor for c in otras):
+            tipo = "otra señal, mismo reporte"
+        elif any(int(ventana[k, c]) == valor for k in vecinos for c in otras):
+            tipo = "otra señal, reporte vecino"
+        elif (ventana == valor).any():
+            tipo = "valor de otra celda"
+        else:
+            tipo = "no está en la ventana"
+        filas.append({"reporte": reporte, "senal": senal, "citado": valor, "real": real, "tipo": tipo})
+    return filas
 
 
 # ---------------------------------------------------------------- una ventana
@@ -337,7 +435,9 @@ def cargar_ejecucion(ruta, prompts, fuente, ventanas):
         v = fuente.ventana(w["conjunto"], w["indice"], avisar=False)
         a = analizar(c["respuesta_bruta"], v, prompts.nombres_llm)
         tokens = c.get("tokens_salida")
-        filas.append(fila_resultado(w, a, cortada=None if tokens is None else tokens >= maximo, tokens_salida=tokens))
+        fila = fila_resultado(w, a, cortada=None if tokens is None else tokens >= maximo, tokens_salida=tokens)
+        tipos = [t["tipo"] for t in clasificar_errores(c["respuesta_bruta"], v, prompts.nombres_llm)]
+        filas.append({**fila, **{f"error: {t}": tipos.count(t) for t in TIPOS_ERROR}})
     return registro, pd.DataFrame(filas)
 
 
@@ -352,12 +452,16 @@ def resumen_ejecucion(tabla):
     if tabla["cortada"].notna().all():   # las ejecuciones copiadas no guardaban los tokens de salida
         filas.append(("Respuestas cortadas por el límite de tokens", int(tabla["cortada"].astype(bool).sum()), n))
     filas += [("Respuestas sin errores al citar la tabla", int(tabla["sin_errores"].sum()), n),
-              ("Respuestas sin ninguna cita «evN: señal=valor»", int((tabla["citas"] == 0).sum()), n),
+              ("Respuestas sin ninguna cita comprobable", int((tabla["citas"] == 0).sum()), n),
               ("Citas correctas", int(tabla["citas_correctas"].sum()), int(tabla["citas"].sum())),
               ("Valores calculados copiados correctamente", int(tabla["calculos_correctos"].sum()),
                int(tabla["calculos"].sum()))]
     for nombre in CALCULOS:
         filas.append((f"  · {nombre}", int(tabla[f"{nombre}_correctos"].sum()), int(tabla[f"{nombre}_total"].sum())))
+    for canal in ("video", "audio"):   # medida aparte de H3: nivel de impacto coherente con la escala declarada
+        if f"impacto_{canal}_coherente" in tabla:
+            filas.append((f"Nivel de impacto en {'vídeo' if canal == 'video' else 'audio'} coherente con la escala",
+                          int(tabla[f"impacto_{canal}_coherente"].sum()), n))
     salida = []
     for medida, k, total in filas:
         inf, sup = ic(k, total) if total else (np.nan, np.nan)
@@ -438,38 +542,56 @@ def grafica_puntuaciones(t):
 # ---------------------------------------------------------------- informe privado
 def informe_html(registro, tabla, prompts, fuente, ventanas, ruta, titulo):
     """
-    HTML autónomo (privado) para revisar y puntuar: por ventana, la gráfica y la tabla con los nombres que vio el
-    modelo, las comprobaciones automáticas (citas y cálculos, con sus errores) y cada campo de la respuesta.
-    Funciona sin conexión.
+    HTML autónomo (privado) para revisar y puntuar: un desplegable y flechas para elegir la ventana y, para cada una,
+    la gráfica y la tabla con los datos que vio el modelo, las comprobaciones (citas y cálculos, con el tipo de cada
+    error, y el nivel de impacto frente a la escala) y cada campo de la respuesta. Funciona sin conexión.
     """
     from visualizacion import graficar_ventana_y_tabla
     e = lambda x: "" if x is None or (isinstance(x, float) and np.isnan(x)) else html.escape(str(x))
     por_id = {w["id"]: w for w in ventanas}
     filas = tabla.set_index("id")
+    ids = [c["id"] for c in registro["llamadas"]]
+    nombres = prompts.nombres_llm
+    opciones = "".join(f"<option value='{e(i)}'>{e(i)} · {e(por_id[i].get('grupo'))} · {e(por_id[i].get('referencia'))}"
+                       f"{'' if filas.loc[i, 'sin_errores'] else ' · con errores de cita'}</option>" for i in ids)
     partes = ["<!doctype html><html lang='es'><head><meta charset='utf-8'><title>" + e(titulo) + "</title><style>"
               "body{font-family:system-ui,sans-serif;margin:16px;color:#1f2328;background:#fff}"
-              "section{border-top:2px solid #d0d7de;padding:12px 0}table{border-collapse:collapse;font-size:13px;width:100%}"
+              "header{position:sticky;top:0;background:#fff;padding:8px 0;border-bottom:2px solid #d0d7de;z-index:10}"
+              "select{font-size:15px;padding:4px;max-width:100%}section{display:none;padding:12px 0}"
+              "table{border-collapse:collapse;font-size:13px;width:100%}"
               "td,th{border:1px solid #d0d7de;padding:4px 6px;vertical-align:top;text-align:left}th{background:#E6F1FB;width:16%}"
-              ".ok{background:#E3F4E6}.ko{background:#FCE4E4}nav a{margin-right:8px}pre{white-space:pre-wrap;margin:0}"
-              "</style></head><body>", f"<h1>{e(titulo)}</h1>",
-              f"<p>Prompt: huella {e(registro['huella_prompt'])} · modelo {e(registro['modelo'].get('modelo'))}</p>"]
-    partes.append("<nav>" + " ".join(f"<a href='#{e(c['id'])}'>{e(c['id'])}</a>" for c in registro["llamadas"]) + "</nav>")
+              ".valores th{width:auto}.valores td,.valores th{padding:2px 5px}"
+              ".ok{background:#E3F4E6}.ko{background:#FCE4E4}pre{white-space:pre-wrap;margin:0;font-family:inherit}"
+              "</style></head><body>",
+              f"<header><b>{e(titulo)}</b> · prompt {e(registro.get('huella_prompt'))} · "
+              f"<button onclick='mover(-1)'>&larr;</button> <select id='sel' onchange='ver(this.value)'>{opciones}</select> "
+              f"<button onclick='mover(1)'>&rarr;</button></header>"]
     primera = True
     for c in registro["llamadas"]:
         w, f = por_id[c["id"]], filas.loc[c["id"]]
         v = fuente.ventana(w["conjunto"], w["indice"], avisar=False)
-        partes.append(f"<section id='{e(c['id'])}'><h2>{e(c['id'])} · grupo: {e(w.get('grupo'))} · "
+        partes.append(f"<section id='s_{e(c['id'])}'><h2>{e(c['id'])} · grupo: {e(w.get('grupo'))} · "
                       f"referencia: {e(w.get('referencia'))}</h2>")
-        fig = graficar_ventana_y_tabla(v, prompts.nombres_llm, c["id"], mostrar=False)
+        fig = graficar_ventana_y_tabla(v, nombres, c["id"], mostrar=False)
         partes.append(fig.to_html(full_html=False, include_plotlyjs=primera))   # plotly.js solo una vez, incrustado
         primera = False
-        clase = "ok" if f["sin_errores"] else "ko"
+        # Los valores, también en una tabla HTML: en la de la figura los números grandes pueden quedar cortados
+        partes.append("<table class='valores'><tr><th>señal</th>" + "".join(f"<th>ev{k + 1}</th>" for k in range(v.shape[0]))
+                      + "</tr>" + "".join(f"<tr><td>{e(n)}</td>" + "".join(
+                          f"<td style='text-align:right{';background:#FFF3D6' if x else ''}'>{int(x)}</td>" for x in v[:, j])
+                          + "</tr>" for j, n in enumerate(nombres)) + "</table><br>")
+        tipos = clasificar_errores(c["respuesta_bruta"], v, nombres)
+        detalle = "<br>".join(f"ev{t['reporte']}: {e(t['senal'])}={e(t['citado'])} (vale {e(t['real'])}) → {e(t['tipo'])}"
+                              for t in tipos)
+        impacto = (f"vídeo: {e(f['impacto_video'])} (escala: {e(f['impacto_video_esperado'])}); "
+                   f"audio: {e(f['impacto_audio'])} (escala: {e(f['impacto_audio_esperado'])})")
+        coherente = bool(f["impacto_video_coherente"]) and bool(f["impacto_audio_coherente"])
         partes.append("<table>"
-                      f"<tr class='{clase}'><th>Citas correctas</th><td>{f['citas_correctas']} de {f['citas']}"
-                      f"<br>{e(f['errores_cita'])}</td></tr>"
-                      f"<tr><th>Cálculos correctos</th><td>{f['calculos_correctos']} de {f['calculos']}"
-                      f"<br>{e(f['errores_calculo'])}</td></tr>"
-                      f"<tr><th>Señales nombradas a 0</th><td>{e(f['senales_a_cero'])}</td></tr>")
+                      f"<tr class='{'ok' if f['sin_errores'] else 'ko'}'><th>Citas correctas</th>"
+                      f"<td>{f['citas_correctas']} de {f['citas']}<br>{detalle}</td></tr>"
+                      f"<tr class='{'ok' if f['calculos_correctos'] == f['calculos'] else 'ko'}'><th>Valores calculados"
+                      f"</th><td>{f['calculos_correctos']} de {f['calculos']}<br>{e(f['errores_calculo'])}</td></tr>"
+                      f"<tr class='{'ok' if coherente else 'ko'}'><th>Impacto frente a la escala</th><td>{impacto}</td></tr>")
         datos, estado = leer_explicacion(c["respuesta_bruta"])
         if datos:
             for clave, valor in datos.items():
@@ -478,7 +600,12 @@ def informe_html(registro, tabla, prompts, fuente, ventanas, ruta, titulo):
         else:
             partes.append(f"<tr class='ko'><th>Respuesta (JSON {e(estado)})</th><td><pre>{e(c['respuesta_bruta'])}</pre></td></tr>")
         partes.append("</table></section>")
-    partes.append("</body></html>")
+    partes.append("<script>const sel=document.getElementById('sel');"
+                  "function ver(id){document.querySelectorAll('section').forEach(s=>s.style.display='none');"
+                  "const s=document.getElementById('s_'+id);s.style.display='block';sel.value=id;"
+                  "window.dispatchEvent(new Event('resize'));}"
+                  "function mover(d){const i=sel.selectedIndex+d;if(i>=0&&i<sel.options.length)ver(sel.options[i].value);}"
+                  "ver(sel.value);</script></body></html>")
     os.makedirs(os.path.dirname(ruta), exist_ok=True)
     with open(ruta, "w", encoding="utf-8") as f:
         f.write("".join(partes))
