@@ -1,6 +1,5 @@
 # TFM_VIU_2026
 Repositorio final del TFM
-
 # Detección de anomalías y explicación mediante IA generativa de fallos en sistemas de streaming
 
 Código del Trabajo Fin de Máster (Máster en Inteligencia Artificial, VIU, curso 2025-2026).
@@ -50,7 +49,7 @@ Los notebooks se ejecutan en orden: cada uno lee lo que guardaron los anteriores
 | Notebook | Qué hace | GPU | Tiempo con los resultados guardados | Tiempo desde cero |
 |---|---|---|---|---|
 | [01_preparacion_datos](https://colab.research.google.com/github/Williams-MP/TFM_VIU_2026/blob/main/notebooks/01_preparacion_datos.ipynb) | Separa los valores imposibles y escala las ventanas | No | Unos minutos | Unos minutos |
-| [02_entrenamiento_detectores](https://colab.research.google.com/github/Williams-MP/TFM_VIU_2026/blob/main/notebooks/02_entrenamiento_detectores.ipynb) | Entrena TranAD y TranAD+ con 5 semillas cada uno | Sí (T4) | Unos minutos por modelo (solo recalcula los errores) | **≈ 4,5 h** (27 min por modelo). La sección 7, opcional, repite los 10 entrenamientos: otras 4,5 h |
+| [02_entrenamiento_detectores](https://colab.research.google.com/github/Williams-MP/TFM_VIU_2026/blob/main/notebooks/02_entrenamiento_detectores.ipynb) | Entrena TranAD y TranAD+ con 5 semillas cada uno | Sí (T4) | Segundos: se salta cada modelo ya terminado | **≈ 4,5 h** (27 min por modelo). La sección 7, opcional, repite los 10 entrenamientos: otras 4,5 h |
 | [03_analisis_detectores](https://colab.research.google.com/github/Williams-MP/TFM_VIU_2026/blob/main/notebooks/03_analisis_detectores.ipynb) | Índice de Jaccard, alertas de consenso y umbral POT | No | Minutos | Minutos |
 | [04_experimento_1](https://colab.research.google.com/github/Williams-MP/TFM_VIU_2026/blob/main/notebooks/04_experimento_1.ipynb) | Figuras y tablas del Experimento 1 | No | Minutos | Minutos |
 | [05_experimento_2](https://colab.research.google.com/github/Williams-MP/TFM_VIU_2026/blob/main/notebooks/05_experimento_2.ipynb) | Entradas y ejecuciones del modelo de lenguaje | Solo si `EJECUTAR = True` | Minutos | **≈ 25 min por modelo** sobre la prueba (160 consultas). Más con Qwen2.5-14B |
@@ -96,7 +95,7 @@ datos/
 
 - **Detectores:** las semillas (0, 7, 42, 123 y 777) controlan los pesos iniciales, el orden de las ventanas y el *dropout*, y PyTorch se configura en modo determinista. Dos entrenamientos con la misma semilla dan los mismos pesos (apartado 5.1.1 de la memoria).
 - **Modelo de lenguaje:** se decodifica sin muestreo, así que la misma entrada da la misma salida. Cada ejecución guarda la huella SHA-256 del prompt, y los notebooks comprueban que coincide con la de la memoria antes de usar una ejecución.
-- **Cifras de la memoria:** los notebooks 03, 04 y 09 comparan cada cifra calculada con la de la memoria y la marcan como `coincide` o `distinto`.
+- **Cifras de la memoria:** los notebooks 03 y 04 comparan cada cifra calculada con la de la memoria y la marcan como `coincide` o `distinto`.
 
 Entorno: Google Colab, Python 3.12 y PyTorch 2.9. GPU NVIDIA Tesla T4 para los detectores y el Experimento 2, y NVIDIA L4 para el Experimento 3.
 
