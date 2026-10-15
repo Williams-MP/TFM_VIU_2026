@@ -1,0 +1,30 @@
+# Dependencias del repositorio TFM_VIU_2026.
+#
+# En Google Colab no hace falta instalar nada a mano: Colab ya trae casi todo, y los
+# notebooks instalan lo que falta (bitsandbytes en 05 y 08; plotly y kaleido en 04).
+# Este fichero es para ejecutar el código fuera de Colab:
+#     pip install -r requirements.txt
+#
+# Entorno de la memoria: Python 3.12 y PyTorch 2.9 en Google Colab.
+# Las versiones exactas usadas con el modelo de lenguaje se guardan en el campo
+# "entorno" de cada ejecución de los Experimentos 2 y 3.
+
+# --- Datos y cálculo (todos los notebooks) ---
+numpy
+pandas
+pyarrow              # lectura de los ficheros Parquet de ventanas
+scipy                # umbral POT (Pareto generalizada), McNemar e intervalos
+scikit-learn         # escaladores mínimo-máximo y AUROC
+joblib               # guardado de los escaladores
+
+# --- Detectores TranAD y TranAD+ (notebook 02) ---
+torch>=2.9           # misma versión que en la memoria para reproducir los pesos bit a bit
+
+# --- Figuras (notebooks 04, 06, 07 y 09) ---
+plotly>=6.1
+kaleido>=1.0         # exportación de las figuras a PNG; descarga Chrome la primera vez
+
+# --- Modelo de lenguaje (notebooks 05 y 08; solo para ejecutar el modelo) ---
+transformers         # Qwen3.5-9B necesita una versión reciente
+accelerate           # reparto del modelo en la GPU (device_map="auto")
+bitsandbytes         # cuantización a 4 bits (NF4); requiere GPU NVIDIA
